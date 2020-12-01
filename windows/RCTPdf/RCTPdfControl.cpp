@@ -129,7 +129,7 @@ namespace winrt::RCTPdf::implementation
     return nativeProps.GetView();
   }
 
-  winrt::fire_and_forget RCTPdfControl::UpdateProperties(winrt::Microsoft::ReactNative::IJSValueReader const& propertyMapReader) noexcept {    
+  void RCTPdfControl::UpdateProperties(winrt::Microsoft::ReactNative::IJSValueReader const& propertyMapReader) noexcept {    
     const JSValueObject& propertyMap = JSValue::ReadObjectFrom(propertyMapReader);
     std::optional<std::string> pdfURI;
     std::optional<std::string> pdfPassword;
@@ -220,7 +220,6 @@ namespace winrt::RCTPdf::implementation
       bool needScrool = false;
       if (horizontal && *horizontal != m_horizontal) {
         SetOrientation(*horizontal);
-        co_await m_pages[m_currentPage].render();
         needScrool = true;
       }
       if (setPage) {

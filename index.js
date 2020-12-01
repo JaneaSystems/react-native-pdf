@@ -28,7 +28,6 @@ let RNFetchBlob = {
         }
     }
 };
-console.log(Platform.OS);
 if (Platform.OS !== 'windows') {
     RNFetchBlob = require('rn-fetch-blob');
 }
@@ -180,9 +179,9 @@ export default class Pdf extends Component {
         if (this._mounted) {
             this.setState({isDownloaded: false, path: '', progress: 0});
         }
+        const cacheFile = RNFetchBlob.fs.dirs.CacheDir + '/' + SHA1(uri) + '.pdf';
 
         if (source.cache) {
-            const cacheFile = RNFetchBlob.fs.dirs.CacheDir + '/' + SHA1(uri) + '.pdf';
             RNFetchBlob.fs
                 .stat(cacheFile)
                 .then(stats => {

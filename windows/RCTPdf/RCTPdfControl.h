@@ -38,7 +38,7 @@ namespace winrt::RCTPdf::implementation
         static winrt::Windows::Foundation::Collections::
           IMapView<winrt::hstring, winrt::Microsoft::ReactNative::ViewManagerPropertyType>
           NativeProps() noexcept;
-        winrt::fire_and_forget UpdateProperties(winrt::Microsoft::ReactNative::IJSValueReader const& propertyMapReader) noexcept;
+        void UpdateProperties(winrt::Microsoft::ReactNative::IJSValueReader const& propertyMapReader) noexcept;
 
         static winrt::Microsoft::ReactNative::ConstantProviderDelegate
           ExportedCustomBubblingEventTypeConstants() noexcept;
