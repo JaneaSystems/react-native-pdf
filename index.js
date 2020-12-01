@@ -21,7 +21,11 @@ import {
 import { ProgressBar } from '@react-native-community/progress-bar-android'
 import { ProgressView } from '@react-native-community/progress-view'
 
-import RNFetchBlob from 'rn-fetch-blob';
+let RNFetchBlob = {};
+console.log(Platform.OS);
+if (Platform.OS !== 'windows') {
+    RNFetchBlob = require('rn-fetch-blob');
+}
 
 const SHA1 = require('crypto-js/sha1');
 import PdfView from './PdfView';
@@ -151,7 +155,7 @@ export default class Pdf extends Component {
         this._loadFromSource(this.props.source);
     }
 
-    componentWillUnmount() {
+    REMcomponentWillUnmount() {
         this._mounted = false;
         if (this.lastRNBFTask) {
             this.lastRNBFTask.cancel(err => {
@@ -166,7 +170,7 @@ export default class Pdf extends Component {
         const source = Image.resolveAssetSource(newSource) || {};
 
         let uri = source.uri || '';
-
+        console.log(uri)
         // first set to initial state
         if (this._mounted) {
             this.setState({isDownloaded: false, path: '', progress: 0});
@@ -392,7 +396,7 @@ export default class Pdf extends Component {
     };
 
     render() {
-        if (Platform.OS === "android" || Platform.OS === "ios") {
+        if (Platform.OS === "android" || Platform.OS === "ios" || Platform.OS === "windows") {
                 return (
                     <View style={[this.props.style,{overflow: 'hidden'}]}>
                         {!this.state.isDownloaded?
@@ -415,7 +419,7 @@ export default class Pdf extends Component {
                                             {...this.props.activityIndicatorProps}
                                         />}
                             </View>):(
-                                Platform.OS === "android"?(
+                                Platform.OS === "android" || Platform.OS === "windows"?(
                                         <PdfCustom
                                             ref={component => (this._root = component)}
                                             {...this.props}
@@ -461,6 +465,10 @@ if (Platform.OS === "android") {
     })
 } else if (Platform.OS === "ios") {
     var PdfCustom = requireNativeComponent('RCTPdfView', Pdf, {
+        nativeOnly: {path: true, onChange: true},
+    })
+} else if (Platform.OS === "windows") {
+    var PdfCustom = requireNativeComponent('RCTPdf', Pdf, {
         nativeOnly: {path: true, onChange: true},
     })
 }
