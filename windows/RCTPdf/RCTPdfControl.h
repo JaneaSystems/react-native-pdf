@@ -38,7 +38,7 @@ namespace winrt::RCTPdf::implementation
         static winrt::Windows::Foundation::Collections::
           IMapView<winrt::hstring, winrt::Microsoft::ReactNative::ViewManagerPropertyType>
           NativeProps() noexcept;
-        void UpdateProperties(winrt::Microsoft::ReactNative::IJSValueReader const& propertyMapReader) noexcept;
+        winrt::fire_and_forget UpdateProperties(winrt::Microsoft::ReactNative::IJSValueReader const& propertyMapReader) noexcept;
 
         static winrt::Microsoft::ReactNative::ConstantProviderDelegate
           ExportedCustomBubblingEventTypeConstants() noexcept;
@@ -85,6 +85,8 @@ namespace winrt::RCTPdf::implementation
         winrt::fire_and_forget LoadPDF(std::unique_lock<std::shared_mutex> lock, int fitPolicy, bool singlePage);
         void GoToPage(int page);
         void Rescale(double newScale, double newMargin, bool goToNewPosition);
+        void SetOrientation(bool horizontal);
+        winrt::IAsyncAction RenderVisiblePages(int page);
         void SignalError(const std::string& error);
         void SignalLoadComplete(int totalPages, int width, int height);
         void SignalPageChange(int page, int totalPages);

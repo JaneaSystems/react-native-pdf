@@ -129,11 +129,10 @@ namespace winrt::RCTPdf::implementation
     return nativeProps.GetView();
   }
 
-  void RCTPdfControl::UpdateProperties(winrt::Microsoft::ReactNative::IJSValueReader const& propertyMapReader) noexcept {
-    std::unique_lock lock(m_rwlock);
+  winrt::fire_and_forget RCTPdfControl::UpdateProperties(winrt::Microsoft::ReactNative::IJSValueReader const& propertyMapReader) noexcept {    
     const JSValueObject& propertyMap = JSValue::ReadObjectFrom(propertyMapReader);
-    std::string pdfURI;
-    std::string pdfPassword;
+    std::optional<std::string> pdfURI;
+    std::optional<std::string> pdfPassword;
     std::optional<int> setPage;
     std::optional<double> minScale, maxScale, scale;
     std::optional<bool> horizontal;
@@ -154,8 +153,8 @@ namespace winrt::RCTPdf::implementation
       else if (propertyName == "page" && propertyValue != nullptr) {
         setPage = propertyValue.AsInt32() - 1;
       }
-      else if (propertyName == "minScale" && propertyValue != nullptr) {
-        minScale = propertyValue.AsDouble();
+      else if (propertyName == "scale" && propertyValue != nullptr) {
+        scale = propertyValue.AsDouble();
       }
       else if (propertyName == "minScale" && propertyValue != nullptr) {
         minScale = propertyValue.AsDouble();
@@ -192,12 +191,15 @@ namespace winrt::RCTPdf::implementation
       }
     }
     // If we are loading a new PDF:
-    if (pdfURI != m_pdfURI ||
-        pdfPassword != m_pdfPassword ||
+    std::shared_lock lock(m_rwlock);
+    if (pdfURI && *pdfURI != m_pdfURI ||
+        pdfPassword && *pdfPassword != m_pdfPassword ||
         (reverse && *reverse != m_reverse) ||
         (singlePage && (m_pages.empty() || *singlePage && m_pages.size() != 1 || !*singlePage && m_pages.size() == 1)) ) {
-      m_pdfURI = pdfURI;
-      m_pdfPassword = pdfPassword;
+      lock.unlock();
+      std::unique_lock write_lock(m_rwlock);
+      m_pdfURI = pdfURI.value_or("");
+      m_pdfPassword = pdfPassword.value_or("");
       m_currentPage = setPage.value_or(0);
       m_scale = scale.value_or(1);
       m_minScale = minScale.value_or(0.1);
@@ -210,16 +212,15 @@ namespace winrt::RCTPdf::implementation
         useFitPolicy = *fitPolicy;
       m_margins = spacing.value_or(5);
       m_reverse = reverse.value_or(false);
-      LoadPDF(std::move(lock), useFitPolicy, singlePage.value_or(false));
+      LoadPDF(std::move(write_lock), useFitPolicy, singlePage.value_or(false));
     } else {
       // If we are updating the pdf:
-      lock.unlock();
-      std::shared_lock shared(m_rwlock);
       m_minScale = minScale.value_or(m_minScale);
       m_maxScale = maxScale.value_or(m_maxScale);
       bool needScrool = false;
       if (horizontal && *horizontal != m_horizontal) {
-        m_horizontal = *horizontal;
+        SetOrientation(*horizontal);
+        co_await m_pages[m_currentPage].render();
         needScrool = true;
       }
       if (setPage) {
@@ -365,10 +366,7 @@ namespace winrt::RCTPdf::implementation
     auto items = Pages().Items();
     items.Clear();
     m_pages.clear();
-    auto panelTemplate = FindName(winrt::to_hstring("OrientationSelector")).try_as<StackPanel>();
-    if (panelTemplate) {
-      panelTemplate.Orientation(m_horizontal ? Orientation::Horizontal : Orientation::Vertical);
-    }
+    SetOrientation(m_horizontal);
     if (document.PageCount() == 0) {
       if (fitPolicy != -1)
         m_scale = 1;
@@ -422,7 +420,7 @@ namespace winrt::RCTPdf::implementation
     lock.unlock();
     // Render low-res preview of the pages
     std::shared_lock shared_lock(m_rwlock);
-    double useScale = (std::min)(m_scale, 0.1);
+    double useScale = (std::min)(m_scale, 0.5);
     for (unsigned page = 0; page < m_pages.size(); ++page) {
       co_await m_pages[page].render(useScale);
     }
@@ -467,26 +465,7 @@ namespace winrt::RCTPdf::implementation
     }
     // Render all visible pages - first the curent one, then the next visible ones and one
     // more, then the one before that might be partly visible, then one more before
-    if (m_pages[page].needsRender()) {
-      co_await m_pages[page].render();
-    }
-    auto pageToRender = page + 1;
-    while (pageToRender < (int)m_pages.size() &&
-           m_pages[pageToRender].pageVisiblePixels(m_horizontal, offsetStart, offsetEnd) > 0) {
-      if (m_pages[pageToRender].needsRender()) {
-        co_await m_pages[pageToRender].render();
-      }
-      ++pageToRender;
-    }
-    if (pageToRender < (int)m_pages.size() && m_pages[pageToRender].needsRender()) {
-      co_await m_pages[pageToRender].render();
-    }
-    if (page >= 1 && m_pages[page - 1].needsRender()) {
-      co_await m_pages[page - 1].render();
-    }
-    if (page >= 2 && m_pages[page - 2].needsRender()) {
-      co_await m_pages[page - 2].render();
-    }
+    co_await RenderVisiblePages(m_currentPage);
     if (page != m_currentPage) {
       m_currentPage = page;
       SignalPageChange(m_currentPage + 1, m_pages.size());
@@ -501,6 +480,7 @@ namespace winrt::RCTPdf::implementation
     double horizontalOffset = m_horizontal ? neededOffset : PagesContainer().HorizontalOffset();
     double verticalOffset = m_horizontal ? PagesContainer().VerticalOffset() : neededOffset;
     PagesContainer().ChangeView(horizontalOffset, verticalOffset, nullptr, true);
+    SignalPageChange(page + 1, m_pages.size());
   }
 
   void RCTPdfControl::Rescale(double newScale, double newMargin, bool goToNewPosition) {
@@ -525,6 +505,40 @@ namespace winrt::RCTPdf::implementation
         PagesContainer().ChangeView(min(targetHorizontalOffset, maxHorizontalOffset), min(targetVerticalOffset, maxVerticalOffset), nullptr, true);
       }
       SignalScaleChanged(m_scale);
+    }
+  }
+  void RCTPdfControl::SetOrientation(bool horizontal) {
+    m_horizontal = horizontal;
+    FindName(winrt::to_hstring("OrientationSelector")).try_as<StackPanel>().Orientation(m_horizontal ? Orientation::Horizontal : Orientation::Vertical);
+  }
+
+  winrt::IAsyncAction RCTPdfControl::RenderVisiblePages(int page) {
+    auto lifetime = get_strong();
+    auto container = PagesContainer();
+    auto currentHorizontalOffset = container.HorizontalOffset();
+    auto currentVerticalOffset = container.VerticalOffset();
+    double offsetStart = m_horizontal ? currentHorizontalOffset : currentVerticalOffset;
+    double viewSize = m_horizontal ? container.ViewportWidth() : container.ViewportHeight();
+    double offsetEnd = offsetStart + viewSize;
+    if (m_pages[page].needsRender()) {
+      co_await m_pages[page].render();
+    }
+    auto pageToRender = page + 1;
+    while (pageToRender < (int)m_pages.size() &&
+      m_pages[pageToRender].pageVisiblePixels(m_horizontal, offsetStart, offsetEnd) > 0) {
+      if (m_pages[pageToRender].needsRender()) {
+        co_await m_pages[pageToRender].render();
+      }
+      ++pageToRender;
+    }
+    if (pageToRender < (int)m_pages.size() && m_pages[pageToRender].needsRender()) {
+      co_await m_pages[pageToRender].render();
+    }
+    if (page >= 1 && m_pages[page - 1].needsRender()) {
+      co_await m_pages[page - 1].render();
+    }
+    if (page >= 2 && m_pages[page - 2].needsRender()) {
+      co_await m_pages[page - 2].render();
     }
   }
 
