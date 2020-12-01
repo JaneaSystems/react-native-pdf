@@ -12,9 +12,13 @@
     HorizontalScrollMode="Enabled"
     HorizontalScrollBarVisibility="Visible"
     IsTabStop="True"
-    PointerWheelChanged="PagesContainer_PointerWheelChanged"
-    >
-    <ItemsControl x:Name="Pages" HorizontalAlignment="Center">
+    IsTapEnabled="True"
+    AllowFocusOnInteraction="True"
+    AllowFocusWhenDisabled="True"
+    UseSystemFocusVisuals="False"
+    PointerWheelChanged="PagesContainer_PointerWheelChanged">
+    <ItemsControl x:Name="Pages" HorizontalAlignment="Center"
+                  SizeChanged="Pages_SizeChanged">
       <ItemsControl.ItemsPanel>
         <ItemsPanelTemplate>
           <StackPanel x:Name="OrientationSelector" Orientation="Vertical"/>

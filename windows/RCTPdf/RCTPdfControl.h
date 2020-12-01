@@ -51,6 +51,7 @@ namespace winrt::RCTPdf::implementation
           winrt::Microsoft::ReactNative::IJSValueReader const& commandArgsReader) noexcept;
 
         void PagesContainer_PointerWheelChanged(winrt::Windows::Foundation::IInspectable const& sender, winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e);
+        void Pages_SizeChanged(winrt::Windows::Foundation::IInspectable const& sender, winrt::Windows::UI::Xaml::SizeChangedEventArgs const& e);
     private:
         Microsoft::ReactNative::IReactContext m_reactContext{ nullptr };
 
@@ -73,15 +74,24 @@ namespace winrt::RCTPdf::implementation
         // Render the pages in reverse order
         bool m_reverse = false;
 
-        double m_targetHorizontalOffset = -1;
-        double m_targetVerticalOffset = -1;
+        // When we rescale or change the margins, we can jump to the new position in the view
+        // only after the ScroolViewer has updated. We store the target offsets here, and go
+        // to them when the control finishes updating;
+        std::optional<double> m_targetHorizontalOffset;
+        std::optional<double> m_targetVerticalOffset;
+        // It is possible, that the new position is reachable even before the control is updated.
+        // A helper function that either schedules a change in the view or jumps right to
+        // the position
+        void ChangeScrool(double targetHorizontalOffset, double targetVerticalOffset);
+
+        // Pages info
         std::vector<PDFPageInfo> m_pages;
-        void UpdatePagesInfoMarginOrScale();
 
         winrt::fire_and_forget OnViewChanged(winrt::Windows::Foundation::IInspectable const& sender,
           winrt::Windows::UI::Xaml::Controls::ScrollViewerViewChangedEventArgs const& args);
         winrt::Windows::UI::Xaml::Controls::ScrollViewer::ViewChanged_revoker m_viewChangedRevoker{};
 
+        void UpdatePagesInfoMarginOrScale();
         winrt::fire_and_forget LoadPDF(std::unique_lock<std::shared_mutex> lock, int fitPolicy, bool singlePage);
         void GoToPage(int page);
         void Rescale(double newScale, double newMargin, bool goToNewPosition);

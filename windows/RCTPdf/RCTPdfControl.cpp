@@ -97,7 +97,6 @@ namespace winrt::RCTPdf::implementation
   }
   
   RCTPdfControl::RCTPdfControl(IReactContext const& reactContext) : m_reactContext(reactContext) {
-    this->AllowFocusOnInteraction(true);
     InitializeComponent();
     m_viewChangedRevoker = PagesContainer().ViewChanged(winrt::auto_revoke,
       [ref = get_weak()](auto const& sender, auto const& args) {
@@ -405,6 +404,8 @@ namespace winrt::RCTPdf::implementation
         items.Append(m_pages[page].image);
     }
     UpdatePagesInfoMarginOrScale();
+    lock.unlock();
+    std::shared_lock shared_lock(m_rwlock);
     if (m_currentPage < 0)
       m_currentPage = 0;
     if (m_currentPage < (int)m_pages.size()) {
@@ -416,9 +417,7 @@ namespace winrt::RCTPdf::implementation
     } else {
       SignalLoadComplete(m_pages.size(), m_pages.front().width, m_pages.front().height);
     }
-    lock.unlock();
     // Render low-res preview of the pages
-    std::shared_lock shared_lock(m_rwlock);
     double useScale = (std::min)(m_scale, 0.5);
     for (unsigned page = 0; page < m_pages.size(); ++page) {
       co_await m_pages[page].render(useScale);
@@ -472,13 +471,13 @@ namespace winrt::RCTPdf::implementation
   }
 
   void RCTPdfControl::GoToPage(int page) {
-    if (page < 0 || page > (int)m_pages.size()) {
+    if (page < 0 || page >= (int)m_pages.size()) {
       return;
     }
     auto neededOffset = m_horizontal ? m_pages[page].scaledLeftOffset : m_pages[page].scaledTopOffset;
     double horizontalOffset = m_horizontal ? neededOffset : PagesContainer().HorizontalOffset();
     double verticalOffset = m_horizontal ? PagesContainer().VerticalOffset() : neededOffset;
-    PagesContainer().ChangeView(horizontalOffset, verticalOffset, nullptr, true);
+    ChangeScrool(horizontalOffset, verticalOffset);
     SignalPageChange(page + 1, m_pages.size());
   }
 
@@ -498,10 +497,8 @@ namespace winrt::RCTPdf::implementation
       m_scale = newScale;
       m_margins = (int) newMargin;
       UpdatePagesInfoMarginOrScale();
-      auto maxHorizontalOffset = PagesContainer().ScrollableWidth();
-      auto maxVerticalOffset = PagesContainer().ScrollableHeight();
       if (goToNewPosition) {
-        PagesContainer().ChangeView(min(targetHorizontalOffset, maxHorizontalOffset), min(targetVerticalOffset, maxVerticalOffset), nullptr, true);
+        ChangeScrool(targetHorizontalOffset, targetVerticalOffset);
       }
       SignalScaleChanged(m_scale);
     }
@@ -551,5 +548,33 @@ namespace winrt::RCTPdf::implementation
     Rescale(newScale, m_margins, true);
     e.Handled(true);
   }
-}
 
+  void RCTPdfControl::ChangeScrool(double targetHorizontalOffset, double targetVerticalOffset) {
+    auto container = PagesContainer();
+    auto maxHorizontalOffset = container.ScrollableWidth();
+    auto maxVerticalOffset = container.ScrollableHeight();
+    // If viewport is bigger than a page, it is possible that target offset is
+    // smaller than max offset. Take that into account:
+    if (targetHorizontalOffset <= maxHorizontalOffset + container.ViewportWidth() &&
+        targetVerticalOffset <= maxVerticalOffset + container.ViewportHeight()) {
+      PagesContainer().ChangeView((std::min)(targetHorizontalOffset, maxHorizontalOffset),
+                                  (std::min)(targetVerticalOffset, maxVerticalOffset),
+                                  nullptr, true);
+    } else {
+      m_targetHorizontalOffset = targetHorizontalOffset;
+      m_targetVerticalOffset = targetVerticalOffset;
+    }
+  }
+
+  void RCTPdfControl::Pages_SizeChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Windows::UI::Xaml::SizeChangedEventArgs const&) {
+    if (m_targetHorizontalOffset || m_targetVerticalOffset) {
+      auto container = PagesContainer();
+      PagesContainer().ChangeView(m_targetHorizontalOffset.value_or(container.HorizontalOffset()),
+                                  m_targetVerticalOffset.value_or(container.VerticalOffset()),
+                                  nullptr,
+                                  true);
+      m_targetHorizontalOffset.reset();
+      m_targetVerticalOffset.reset();
+    }
+  }
+}
