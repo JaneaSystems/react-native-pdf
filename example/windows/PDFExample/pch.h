@@ -26,3 +26,4 @@
 #include <winrt/Microsoft.UI.Xaml.XamlTypeInfo.h>
 
 #include "winrt/RCTPdf.h"
+#include "winrt/progress_view.h"

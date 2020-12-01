@@ -236,51 +236,50 @@ namespace winrt::RCTPdf::implementation
   }
 
   winrt::Microsoft::ReactNative::ConstantProviderDelegate RCTPdfControl::ExportedCustomBubblingEventTypeConstants() noexcept {
-    return nullptr;
+    return [](IJSValueWriter const& constantWriter) {
+      WriteCustomDirectEventTypeConstant(constantWriter, "Change");
+    };
   }
   winrt::Microsoft::ReactNative::ConstantProviderDelegate RCTPdfControl::ExportedCustomDirectEventTypeConstants() noexcept {
-    return [](IJSValueWriter const& constantWriter) {
-      WriteCustomDirectEventTypeConstant(constantWriter, "Error");
-      WriteCustomDirectEventTypeConstant(constantWriter, "LoadComplete");
-      WriteCustomDirectEventTypeConstant(constantWriter, "PageChanged");
-      WriteCustomDirectEventTypeConstant(constantWriter, "ScaleChanged");
-    };
+    return nullptr;
   }
   void RCTPdfControl::SignalError(const std::string& error) {
     m_reactContext.DispatchEvent(
       *this,
-      L"topError",
+      L"topChange",
       [&](winrt::Microsoft::ReactNative::IJSValueWriter const& eventDataWriter) noexcept {
         eventDataWriter.WriteObjectBegin();
         {
-          WriteProperty(eventDataWriter, L"error", winrt::to_hstring(error));
+          WriteProperty(eventDataWriter, L"message", winrt::to_hstring("error|" + error));
         }
         eventDataWriter.WriteObjectEnd();
       });
   }
   void RCTPdfControl::SignalLoadComplete(int totalPages, int width, int height) {
+    auto message = "loadComplete|" +
+                   std::to_string(totalPages) + "|" +
+                   std::to_string(width) + "|" +
+                   std::to_string(height) + "|";
     m_reactContext.DispatchEvent(
       *this,
-      L"topLoadComplete",
+      L"topChange",
       [&](winrt::Microsoft::ReactNative::IJSValueWriter const& eventDataWriter) noexcept {
         eventDataWriter.WriteObjectBegin();
         {
-          WriteProperty(eventDataWriter, L"totalPages", totalPages);
-          WriteProperty(eventDataWriter, L"width", width);
-          WriteProperty(eventDataWriter, L"height", height);
+          WriteProperty(eventDataWriter, L"message", winrt::to_hstring(message));
         }
         eventDataWriter.WriteObjectEnd();
       });
   }
   void RCTPdfControl::SignalPageChange(int page, int totalPages) {
+    auto message = "pageChanged|" + std::to_string(page) + "|" + std::to_string(totalPages);
     m_reactContext.DispatchEvent(
       *this,
-      L"topPageChanged",
+      L"topChange",
       [&](winrt::Microsoft::ReactNative::IJSValueWriter const& eventDataWriter) noexcept {
         eventDataWriter.WriteObjectBegin();
         {
-          WriteProperty(eventDataWriter, L"page", page);
-          WriteProperty(eventDataWriter, L"totalPages", totalPages);
+          WriteProperty(eventDataWriter, L"message", winrt::to_hstring(message));
         }
         eventDataWriter.WriteObjectEnd();
       });
@@ -288,11 +287,11 @@ namespace winrt::RCTPdf::implementation
   void RCTPdfControl::SignalScaleChanged(double scale) {
     m_reactContext.DispatchEvent(
       *this,
-      L"topScaleChanged",
+      L"topChange",
       [&](winrt::Microsoft::ReactNative::IJSValueWriter const& eventDataWriter) noexcept {
         eventDataWriter.WriteObjectBegin();
         {
-          WriteProperty(eventDataWriter, L"scale", scale);
+          WriteProperty(eventDataWriter, L"message", winrt::to_hstring("scale|" + std::to_string(scale)));
         }
         eventDataWriter.WriteObjectEnd();
       });

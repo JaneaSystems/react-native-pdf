@@ -21,7 +21,13 @@ import {
 import { ProgressBar } from '@react-native-community/progress-bar-android'
 import { ProgressView } from '@react-native-community/progress-view'
 
-let RNFetchBlob = {};
+let RNFetchBlob = {
+    fs : {
+        dirs: {
+            CacheDir: ''
+        }
+    }
+};
 console.log(Platform.OS);
 if (Platform.OS !== 'windows') {
     RNFetchBlob = require('rn-fetch-blob');
@@ -155,7 +161,7 @@ export default class Pdf extends Component {
         this._loadFromSource(this.props.source);
     }
 
-    REMcomponentWillUnmount() {
+    componentWillUnmount() {
         this._mounted = false;
         if (this.lastRNBFTask) {
             this.lastRNBFTask.cancel(err => {
@@ -170,15 +176,13 @@ export default class Pdf extends Component {
         const source = Image.resolveAssetSource(newSource) || {};
 
         let uri = source.uri || '';
-        console.log(uri)
         // first set to initial state
         if (this._mounted) {
             this.setState({isDownloaded: false, path: '', progress: 0});
         }
 
-        const cacheFile = RNFetchBlob.fs.dirs.CacheDir + '/' + SHA1(uri) + '.pdf';
-
         if (source.cache) {
+            const cacheFile = RNFetchBlob.fs.dirs.CacheDir + '/' + SHA1(uri) + '.pdf';
             RNFetchBlob.fs
                 .stat(cacheFile)
                 .then(stats => {
