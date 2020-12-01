@@ -346,9 +346,9 @@ namespace winrt::RCTPdf::implementation
   winrt::fire_and_forget RCTPdfControl::LoadPDF(std::unique_lock<std::shared_mutex> lock, int fitPolicy, bool singlePage) {
     auto lifetime = get_strong();
     auto uri = Uri(winrt::to_hstring(m_pdfURI));
-    auto file = co_await StorageFile::GetFileFromApplicationUriAsync(uri);
     PdfDocument document = nullptr;
     try {
+      auto file = co_await StorageFile::GetFileFromApplicationUriAsync(uri);
       document = co_await PdfDocument::LoadFromFileAsync(file, winrt::to_hstring(m_pdfPassword));
     } catch (winrt::hresult_error const& ex) {
       switch (ex.to_abi()) {
