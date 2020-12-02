@@ -22,8 +22,6 @@ using namespace Windows::UI::Xaml::Input;
 using namespace Windows::UI::Xaml::Media;
 using namespace Windows::UI::Xaml::Media::Imaging;
 
-// C:\\Users\\ja\Desktop\\bod.pdf
-
 namespace winrt::RCTPdf::implementation
 {
   PDFPageInfo::PDFPageInfo(winrt::Windows::UI::Xaml::Controls::Image image, winrt::Windows::Data::Pdf::PdfPage page, double imageScale, double renderScale) :
@@ -100,9 +98,7 @@ namespace winrt::RCTPdf::implementation
     InitializeComponent();
   }
 
-  winrt::Windows::Foundation::Collections::
-    IMapView<winrt::hstring, winrt::Microsoft::ReactNative::ViewManagerPropertyType>
-    RCTPdfControl::NativeProps() noexcept {
+  winrt::Windows::Foundation::Collections::IMapView<winrt::hstring, winrt::Microsoft::ReactNative::ViewManagerPropertyType> RCTPdfControl::NativeProps() noexcept {
     auto nativeProps = winrt::single_threaded_map<hstring, ViewManagerPropertyType>();
     nativeProps.Insert(L"path", ViewManagerPropertyType::String);
     nativeProps.Insert(L"page", ViewManagerPropertyType::Number);
@@ -194,16 +190,16 @@ namespace winrt::RCTPdf::implementation
       m_pdfURI = pdfURI.value_or("");
       m_pdfPassword = pdfPassword.value_or("");
       m_currentPage = setPage.value_or(0);
-      m_scale = scale.value_or(1);
-      m_minScale = minScale.value_or(0.1);
-      m_maxScale = maxScale.value_or(3.0);
+      m_scale = scale.value_or(m_defualtZoom);
+      m_minScale = minScale.value_or(m_defaultMinZoom);
+      m_maxScale = maxScale.value_or(m_defaultMaxZoom);
       m_horizontal = horizontal.value_or(false);
       int useFitPolicy = 2;
       if (fitWidth)
         useFitPolicy = 0;
       if (fitPolicy)
         useFitPolicy = *fitPolicy;
-      m_margins = spacing.value_or(5);
+      m_margins = spacing.value_or(m_defaultMargins);
       m_reverse = reverse.value_or(false);
       LoadPDF(std::move(write_lock), useFitPolicy, singlePage.value_or(false));
     } else {
@@ -412,7 +408,7 @@ namespace winrt::RCTPdf::implementation
       SignalLoadComplete(m_pages.size(), m_pages.front().width, m_pages.front().height);
     }
     // Render low-res preview of the pages
-    double useScale = (std::min)(m_scale, 0.5);
+    double useScale = (std::min)(m_scale, m_previewZoom);
     for (unsigned page = 0; page < m_pages.size(); ++page) {
       co_await m_pages[page].render(useScale);
     }
@@ -495,9 +491,9 @@ namespace winrt::RCTPdf::implementation
     winrt::Windows::System::VirtualKeyModifiers modifiers = e.KeyModifiers();
     if ((modifiers & winrt::Windows::System::VirtualKeyModifiers::Control) != winrt::Windows::System::VirtualKeyModifiers::Control)
       return;
-    double delta = (e.GetCurrentPoint(*this).Properties().MouseWheelDelta() / WHEEL_DELTA) * 0.1;
+    double delta = (e.GetCurrentPoint(*this).Properties().MouseWheelDelta() / WHEEL_DELTA);
     std::shared_lock lock(m_rwlock);
-    auto newScale = (std::max)((std::min)(m_scale + delta, m_maxScale), m_minScale);
+    auto newScale = (std::max)((std::min)(m_scale * pow(m_zoomMultiplier, delta), m_maxScale), m_minScale);
     Rescale(newScale, m_margins, true);
     e.Handled(true);
   }
@@ -583,6 +579,6 @@ winrt::fire_and_forget winrt::RCTPdf::implementation::RCTPdfControl::PagesContai
 void winrt::RCTPdf::implementation::RCTPdfControl::PagesContainer_DoubleTapped(winrt::Windows::Foundation::IInspectable const& sender, winrt::Windows::UI::Xaml::Input::DoubleTappedRoutedEventArgs const& e)
 {
   std::shared_lock lock(m_rwlock);
-  double newScale = (std::min)(m_scale * 1.3, m_maxScale);
+  double newScale = (std::min)(m_scale * m_zoomMultiplier, m_maxScale);
   Rescale(newScale, m_margins, true);
 }

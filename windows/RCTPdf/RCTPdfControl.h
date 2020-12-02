@@ -57,6 +57,8 @@ namespace winrt::RCTPdf::implementation
 
         void PagesContainer_PointerWheelChanged(winrt::Windows::Foundation::IInspectable const& sender, winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e);
         void Pages_SizeChanged(winrt::Windows::Foundation::IInspectable const& sender, winrt::Windows::UI::Xaml::SizeChangedEventArgs const& e);
+        winrt::fire_and_forget PagesContainer_ViewChanged(winrt::Windows::Foundation::IInspectable const& sender, winrt::Windows::UI::Xaml::Controls::ScrollViewerViewChangedEventArgs const& e);
+        void PagesContainer_DoubleTapped(winrt::Windows::Foundation::IInspectable const& sender, winrt::Windows::UI::Xaml::Input::DoubleTappedRoutedEventArgs const& e);
     private:
         Microsoft::ReactNative::IReactContext m_reactContext{ nullptr };
 
@@ -106,9 +108,14 @@ namespace winrt::RCTPdf::implementation
         void SignalLoadComplete(int totalPages, int width, int height);
         void SignalPageChange(int page, int totalPages);
         void SignalScaleChanged(double scale);
-    public:
-      winrt::fire_and_forget PagesContainer_ViewChanged(winrt::Windows::Foundation::IInspectable const& sender, winrt::Windows::UI::Xaml::Controls::ScrollViewerViewChangedEventArgs const& e);
-      void PagesContainer_DoubleTapped(winrt::Windows::Foundation::IInspectable const& sender, winrt::Windows::UI::Xaml::Input::DoubleTappedRoutedEventArgs const& e);
+
+        // Zoom in/out scale multiplier
+        static constexpr double m_zoomMultiplier = 1.2;
+        static constexpr double m_defaultMaxZoom = 3.0;
+        static constexpr double m_defaultMinZoom = 1.0;
+        static constexpr double m_defualtZoom = 1.0;
+        static constexpr int m_defaultMargins = 10;
+        static constexpr double m_previewZoom = 0.5;
     };
 }
 
