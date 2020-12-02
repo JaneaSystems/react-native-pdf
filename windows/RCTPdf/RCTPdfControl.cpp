@@ -396,7 +396,7 @@ namespace winrt::RCTPdf::implementation
     catch (winrt::hresult_error const& ex) {
       switch (ex.to_abi()) {
       case __HRESULT_FROM_WIN32(ERROR_WRONG_PASSWORD):
-        SignalError("Document is password-protected and password is incorrect.");
+        SignalError("Password required or incorrect password.");
         co_return;
       case E_FAIL:
         SignalError("Document is not a valid PDF.");
