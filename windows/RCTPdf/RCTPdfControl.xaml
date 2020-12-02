@@ -16,7 +16,10 @@
     AllowFocusOnInteraction="True"
     AllowFocusWhenDisabled="True"
     UseSystemFocusVisuals="False"
-    PointerWheelChanged="PagesContainer_PointerWheelChanged">
+    PointerWheelChanged="PagesContainer_PointerWheelChanged"
+    DoubleTapped="PagesContainer_DoubleTapped"
+    ViewChanged="PagesContainer_ViewChanged"
+    >
     <ItemsControl x:Name="Pages" HorizontalAlignment="Center"
                   SizeChanged="Pages_SizeChanged">
       <ItemsControl.ItemsPanel>

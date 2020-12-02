@@ -28,6 +28,11 @@ namespace winrt::RCTPdf::implementation
       std::atomic<double> renderScale; // scale at which the image is rendered
       winrt::Windows::UI::Xaml::Controls::Image image;
       winrt::Windows::Data::Pdf::PdfPage page;
+
+      // If zooming-out at what point we rerender the image with smaller scale?
+      // E.g. value of 2 means if the image is currently rendered at scale 1.0
+      // we will rerender it when the scale is smaller than 0.5
+      static constexpr double m_downscaleTreshold = 2;
     };
 
     struct RCTPdfControl : RCTPdfControlT<RCTPdfControl>
@@ -101,6 +106,9 @@ namespace winrt::RCTPdf::implementation
         void SignalLoadComplete(int totalPages, int width, int height);
         void SignalPageChange(int page, int totalPages);
         void SignalScaleChanged(double scale);
+    public:
+      winrt::fire_and_forget PagesContainer_ViewChanged(winrt::Windows::Foundation::IInspectable const& sender, winrt::Windows::UI::Xaml::Controls::ScrollViewerViewChangedEventArgs const& e);
+      void PagesContainer_DoubleTapped(winrt::Windows::Foundation::IInspectable const& sender, winrt::Windows::UI::Xaml::Input::DoubleTappedRoutedEventArgs const& e);
     };
 }
 

@@ -68,7 +68,7 @@ namespace winrt::RCTPdf::implementation
   }
   bool PDFPageInfo::needsRender() const {
     double currentRenderScale = renderScale;
-    return currentRenderScale < imageScale || currentRenderScale > imageScale * 2;
+    return currentRenderScale < imageScale || currentRenderScale > imageScale * m_downscaleTreshold;
   }
   winrt::IAsyncAction PDFPageInfo::render() {
     return render(imageScale);
@@ -77,7 +77,7 @@ namespace winrt::RCTPdf::implementation
     double currentRenderScale;
     while (true) {
       currentRenderScale = renderScale;
-      if (!(currentRenderScale < imageScale || currentRenderScale > imageScale * 2))
+      if (!(currentRenderScale < imageScale || currentRenderScale > imageScale * m_downscaleTreshold))
         co_return;
       if (renderScale.compare_exchange_weak(currentRenderScale, useScale))
         break;
@@ -98,12 +98,6 @@ namespace winrt::RCTPdf::implementation
   
   RCTPdfControl::RCTPdfControl(IReactContext const& reactContext) : m_reactContext(reactContext) {
     InitializeComponent();
-    m_viewChangedRevoker = PagesContainer().ViewChanged(winrt::auto_revoke,
-      [ref = get_weak()](auto const& sender, auto const& args) {
-      if (auto self = ref.get()) {
-        self->OnViewChanged(sender, args);
-      }
-    });
   }
 
   winrt::Windows::Foundation::Collections::
@@ -426,48 +420,7 @@ namespace winrt::RCTPdf::implementation
 
   winrt::fire_and_forget RCTPdfControl::OnViewChanged(winrt::Windows::Foundation::IInspectable const&,
     winrt::Windows::UI::Xaml::Controls::ScrollViewerViewChangedEventArgs const& args) {
-    auto lifetime = get_strong();
-    auto container = PagesContainer();
-    auto currentHorizontalOffset = container.HorizontalOffset();
-    auto currentVerticalOffset = container.VerticalOffset();
-    double offsetStart = m_horizontal ? currentHorizontalOffset : currentVerticalOffset;
-    double viewSize = m_horizontal ? container.ViewportWidth() : container.ViewportHeight();
-    double offsetEnd = offsetStart + viewSize;
-    std::shared_lock lock(m_rwlock, std::defer_lock);
-    if (args.IsIntermediate() || !lock.try_lock() || viewSize == 0 || m_pages.empty())
-      return;
-    // Go through pages untill we reach a visible page
-    int page = 0;
-    double visiblePagePixels = 0;
-    for (; page < (int)m_pages.size(); ++page) {
-      visiblePagePixels = m_pages[page].pageVisiblePixels(m_horizontal, offsetStart, offsetEnd);
-      if (visiblePagePixels > 0)
-        break;
-    }
-    if (page == (int)m_pages.size()) {
-      --page;
-    } else {
-      double pagePixels = m_pages[page].pageSize(m_horizontal);
-      // #"page" is the first visible page. Check how much of the view port this page covers...
-      double viewCoveredByPage = visiblePagePixels / viewSize;
-      // ...and how much of the page is visible:
-      double pageVisiblePart = visiblePagePixels / pagePixels;
-      // If:
-      //  - less than 50% of the screen is covered by the page
-      //  - less than 50% of the page is visible (important if more than one page fits the screen)
-      //  - there is a next page
-      // move the indicator to that page:
-      if (viewCoveredByPage < 0.5 && pageVisiblePart < 0.5 && page + 1 < (int)m_pages.size()) {
-        ++page;
-      }
-    }
-    // Render all visible pages - first the curent one, then the next visible ones and one
-    // more, then the one before that might be partly visible, then one more before
-    co_await RenderVisiblePages(m_currentPage);
-    if (page != m_currentPage) {
-      m_currentPage = page;
-      SignalPageChange(m_currentPage + 1, m_pages.size());
-    }
+    return {};
   }
 
   void RCTPdfControl::GoToPage(int page) {
@@ -577,4 +530,59 @@ namespace winrt::RCTPdf::implementation
       m_targetVerticalOffset.reset();
     }
   }
+}
+
+
+winrt::fire_and_forget winrt::RCTPdf::implementation::RCTPdfControl::PagesContainer_ViewChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Windows::UI::Xaml::Controls::ScrollViewerViewChangedEventArgs const& args)
+{
+  auto lifetime = get_strong();
+  auto container = PagesContainer();
+  auto currentHorizontalOffset = container.HorizontalOffset();
+  auto currentVerticalOffset = container.VerticalOffset();
+  double offsetStart = m_horizontal ? currentHorizontalOffset : currentVerticalOffset;
+  double viewSize = m_horizontal ? container.ViewportWidth() : container.ViewportHeight();
+  double offsetEnd = offsetStart + viewSize;
+  std::shared_lock lock(m_rwlock, std::defer_lock);
+  if (args.IsIntermediate() || !lock.try_lock() || viewSize == 0 || m_pages.empty())
+    return;
+  // Go through pages untill we reach a visible page
+  int page = 0;
+  double visiblePagePixels = 0;
+  for (; page < (int)m_pages.size(); ++page) {
+    visiblePagePixels = m_pages[page].pageVisiblePixels(m_horizontal, offsetStart, offsetEnd);
+    if (visiblePagePixels > 0)
+      break;
+  }
+  if (page == (int)m_pages.size()) {
+    --page;
+  }
+  else {
+    double pagePixels = m_pages[page].pageSize(m_horizontal);
+    // #"page" is the first visible page. Check how much of the view port this page covers...
+    double viewCoveredByPage = visiblePagePixels / viewSize;
+    // ...and how much of the page is visible:
+    double pageVisiblePart = visiblePagePixels / pagePixels;
+    // If:
+    //  - less than 50% of the screen is covered by the page
+    //  - less than 50% of the page is visible (important if more than one page fits the screen)
+    //  - there is a next page
+    // move the indicator to that page:
+    if (viewCoveredByPage < 0.5 && pageVisiblePart < 0.5 && page + 1 < (int)m_pages.size()) {
+      ++page;
+    }
+  }
+  // Render all visible pages - first the curent one, then the next visible ones and one
+  // more, then the one before that might be partly visible, then one more before
+  co_await RenderVisiblePages(page);
+  if (page != m_currentPage) {
+    m_currentPage = page;
+    SignalPageChange(m_currentPage + 1, m_pages.size());
+  }
+}
+
+void winrt::RCTPdf::implementation::RCTPdfControl::PagesContainer_DoubleTapped(winrt::Windows::Foundation::IInspectable const& sender, winrt::Windows::UI::Xaml::Input::DoubleTappedRoutedEventArgs const& e)
+{
+  std::shared_lock lock(m_rwlock);
+  double newScale = (std::min)(m_scale * 1.3, m_maxScale);
+  Rescale(newScale, m_margins, true);
 }
