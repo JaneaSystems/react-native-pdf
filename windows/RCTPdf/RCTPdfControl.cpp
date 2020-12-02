@@ -206,19 +206,19 @@ namespace winrt::RCTPdf::implementation
       // If we are updating the pdf:
       m_minScale = minScale.value_or(m_minScale);
       m_maxScale = maxScale.value_or(m_maxScale);
-      bool needScrool = false;
+      bool needScroll = false;
       if (horizontal && *horizontal != m_horizontal) {
         SetOrientation(*horizontal);
-        needScrool = true;
+        needScroll = true;
       }
       if (setPage) {
         m_currentPage = *setPage;
-        needScrool = true;
+        needScroll = true;
       }
       if ((scale && *scale != m_scale) || (spacing && *spacing != m_margins)) {
-        Rescale(scale.value_or(m_scale), spacing.value_or(m_margins), !needScrool);
+        Rescale(scale.value_or(m_scale), spacing.value_or(m_margins), !needScroll);
       }
-      if (needScrool) {
+      if (needScroll) {
         GoToPage(m_currentPage);
       }
     }
@@ -325,7 +325,7 @@ namespace winrt::RCTPdf::implementation
     Rescale(newScale, m_margins, true);
   }
 
-  void RCTPdfControl::ChangeScrool(double targetHorizontalOffset, double targetVerticalOffset) {
+  void RCTPdfControl::ChangeScroll(double targetHorizontalOffset, double targetVerticalOffset) {
     auto container = PagesContainer();
     auto maxHorizontalOffset = container.ScrollableWidth();
     auto maxVerticalOffset = container.ScrollableHeight();
@@ -381,7 +381,7 @@ namespace winrt::RCTPdf::implementation
     auto neededOffset = m_horizontal ? m_pages[page].scaledLeftOffset : m_pages[page].scaledTopOffset;
     double horizontalOffset = m_horizontal ? neededOffset : PagesContainer().HorizontalOffset();
     double verticalOffset = m_horizontal ? PagesContainer().VerticalOffset() : neededOffset;
-    ChangeScrool(horizontalOffset, verticalOffset);
+    ChangeScroll(horizontalOffset, verticalOffset);
     SignalPageChange(page + 1, m_pages.size());
   }
 
@@ -489,7 +489,7 @@ namespace winrt::RCTPdf::implementation
       m_margins = (int)newMargin;
       UpdatePagesInfoMarginOrScale();
       if (goToNewPosition) {
-        ChangeScrool(targetHorizontalOffset, targetVerticalOffset);
+        ChangeScroll(targetHorizontalOffset, targetVerticalOffset);
       }
       SignalScaleChanged(m_scale);
     }

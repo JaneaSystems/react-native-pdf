@@ -76,14 +76,14 @@ namespace winrt::RCTPdf::implementation
         bool m_reverse = false;
 
         // When we rescale or change the margins, we can jump to the new position in the view
-        // only after the ScroolViewer has updated. We store the target offsets here, and go
+        // only after the ScrollViewer has updated. We store the target offsets here, and go
         // to them when the control finishes updating;
         std::optional<double> m_targetHorizontalOffset;
         std::optional<double> m_targetVerticalOffset;
         // It is possible, that the new position is reachable even before the control is updated.
         // A helper function that either schedules a change in the view or jumps right to
         // the position
-        void ChangeScrool(double targetHorizontalOffset, double targetVerticalOffset);
+        void ChangeScroll(double targetHorizontalOffset, double targetVerticalOffset);
 
         // Pages info
         std::vector<PDFPageInfo> m_pages;
