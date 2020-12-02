@@ -232,6 +232,304 @@ namespace winrt::RCTPdf::implementation
   winrt::Microsoft::ReactNative::ConstantProviderDelegate RCTPdfControl::ExportedCustomDirectEventTypeConstants() noexcept {
     return nullptr;
   }
+  
+  winrt::Windows::Foundation::Collections::IVectorView<winrt::hstring> RCTPdfControl::Commands() noexcept {
+    auto commands = winrt::single_threaded_vector<hstring>();
+    commands.Append(L"setPage");
+    return commands.GetView();
+  }
+
+  void RCTPdfControl::DispatchCommand(winrt::hstring const& commandId, winrt::Microsoft::ReactNative::IJSValueReader const& commandArgsReader) noexcept {
+    auto commandArgs = JSValue::ReadArrayFrom(commandArgsReader);
+    if (commandId == L"setPage" && commandArgs.size() > 0) {
+      std::shared_lock lock(m_rwlock);
+      auto page = commandArgs[0].AsInt32() - 1;
+      GoToPage(page);
+    }
+  }
+
+  void RCTPdfControl::PagesContainer_PointerWheelChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e) {
+    winrt::Windows::System::VirtualKeyModifiers modifiers = e.KeyModifiers();
+    if ((modifiers & winrt::Windows::System::VirtualKeyModifiers::Control) != winrt::Windows::System::VirtualKeyModifiers::Control)
+      return;
+    double delta = (e.GetCurrentPoint(*this).Properties().MouseWheelDelta() / WHEEL_DELTA);
+    std::shared_lock lock(m_rwlock);
+    auto newScale = (std::max)((std::min)(m_scale * pow(m_zoomMultiplier, delta), m_maxScale), m_minScale);
+    Rescale(newScale, m_margins, true);
+    e.Handled(true);
+  }
+
+  void RCTPdfControl::Pages_SizeChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Windows::UI::Xaml::SizeChangedEventArgs const&) {
+    if (m_targetHorizontalOffset || m_targetVerticalOffset) {
+      auto container = PagesContainer();
+      PagesContainer().ChangeView(m_targetHorizontalOffset.value_or(container.HorizontalOffset()),
+        m_targetVerticalOffset.value_or(container.VerticalOffset()),
+        nullptr,
+        true);
+      m_targetHorizontalOffset.reset();
+      m_targetVerticalOffset.reset();
+    }
+  }
+
+  winrt::fire_and_forget RCTPdfControl::PagesContainer_ViewChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Windows::UI::Xaml::Controls::ScrollViewerViewChangedEventArgs const& args)
+  {
+    auto lifetime = get_strong();
+    auto container = PagesContainer();
+    auto currentHorizontalOffset = container.HorizontalOffset();
+    auto currentVerticalOffset = container.VerticalOffset();
+    double offsetStart = m_horizontal ? currentHorizontalOffset : currentVerticalOffset;
+    double viewSize = m_horizontal ? container.ViewportWidth() : container.ViewportHeight();
+    double offsetEnd = offsetStart + viewSize;
+    std::shared_lock lock(m_rwlock, std::defer_lock);
+    if (args.IsIntermediate() || !lock.try_lock() || viewSize == 0 || m_pages.empty())
+      return;
+    // Go through pages untill we reach a visible page
+    int page = 0;
+    double visiblePagePixels = 0;
+    for (; page < (int)m_pages.size(); ++page) {
+      visiblePagePixels = m_pages[page].pageVisiblePixels(m_horizontal, offsetStart, offsetEnd);
+      if (visiblePagePixels > 0)
+        break;
+    }
+    if (page == (int)m_pages.size()) {
+      --page;
+    }
+    else {
+      double pagePixels = m_pages[page].pageSize(m_horizontal);
+      // #"page" is the first visible page. Check how much of the view port this page covers...
+      double viewCoveredByPage = visiblePagePixels / viewSize;
+      // ...and how much of the page is visible:
+      double pageVisiblePart = visiblePagePixels / pagePixels;
+      // If:
+      //  - less than 50% of the screen is covered by the page
+      //  - less than 50% of the page is visible (important if more than one page fits the screen)
+      //  - there is a next page
+      // move the indicator to that page:
+      if (viewCoveredByPage < 0.5 && pageVisiblePart < 0.5 && page + 1 < (int)m_pages.size()) {
+        ++page;
+      }
+    }
+    // Render all visible pages - first the curent one, then the next visible ones and one
+    // more, then the one before that might be partly visible, then one more before
+    co_await RenderVisiblePages(page);
+    if (page != m_currentPage) {
+      m_currentPage = page;
+      SignalPageChange(m_currentPage + 1, m_pages.size());
+    }
+  }
+
+  void RCTPdfControl::PagesContainer_DoubleTapped(winrt::Windows::Foundation::IInspectable const&, winrt::Windows::UI::Xaml::Input::DoubleTappedRoutedEventArgs const&)
+  {
+    std::shared_lock lock(m_rwlock);
+    double newScale = (std::min)(m_scale * m_zoomMultiplier, m_maxScale);
+    Rescale(newScale, m_margins, true);
+  }
+
+  void RCTPdfControl::ChangeScrool(double targetHorizontalOffset, double targetVerticalOffset) {
+    auto container = PagesContainer();
+    auto maxHorizontalOffset = container.ScrollableWidth();
+    auto maxVerticalOffset = container.ScrollableHeight();
+    // If viewport is bigger than a page, it is possible that target offset is
+    // smaller than max offset. Take that into account:
+    if (targetHorizontalOffset <= maxHorizontalOffset + container.ViewportWidth() &&
+      targetVerticalOffset <= maxVerticalOffset + container.ViewportHeight()) {
+      PagesContainer().ChangeView((std::min)(targetHorizontalOffset, maxHorizontalOffset),
+        (std::min)(targetVerticalOffset, maxVerticalOffset),
+        nullptr, true);
+    }
+    else {
+      m_targetHorizontalOffset = targetHorizontalOffset;
+      m_targetVerticalOffset = targetVerticalOffset;
+    }
+  }
+
+  void RCTPdfControl::UpdatePagesInfoMarginOrScale() {
+    unsigned scaledMargin = (unsigned)(m_scale * m_margins);
+    for (auto& page : m_pages) {
+      page.imageScale = m_scale;
+      page.scaledWidth = (unsigned)(page.width * m_scale);
+      page.scaledHeight = (unsigned)(page.height * m_scale);
+      page.image.Margin(ThicknessHelper::FromUniformLength(scaledMargin));
+      page.image.Width(page.scaledWidth);
+      page.image.Height(page.scaledHeight);
+    }
+    unsigned totalTopOffset = 0;
+    unsigned totalLeftOffset = 0;
+    unsigned doubleScaledMargin = scaledMargin * 2;
+    if (m_reverse) {
+      for (int page = m_pages.size() - 1; page >= 0; --page) {
+        m_pages[page].scaledTopOffset = totalTopOffset;
+        totalTopOffset += m_pages[page].scaledHeight + doubleScaledMargin;
+        m_pages[page].scaledLeftOffset = totalLeftOffset;
+        totalLeftOffset += m_pages[page].scaledWidth + doubleScaledMargin;
+      }
+    }
+    else {
+      for (int page = 0; page < (int)m_pages.size(); ++page) {
+        m_pages[page].scaledTopOffset = totalTopOffset;
+        totalTopOffset += m_pages[page].scaledHeight + doubleScaledMargin;
+        m_pages[page].scaledLeftOffset = totalLeftOffset;
+        totalLeftOffset += m_pages[page].scaledWidth + doubleScaledMargin;
+      }
+    }
+  }
+
+  void RCTPdfControl::GoToPage(int page) {
+    if (page < 0 || page >= (int)m_pages.size()) {
+      return;
+    }
+    auto neededOffset = m_horizontal ? m_pages[page].scaledLeftOffset : m_pages[page].scaledTopOffset;
+    double horizontalOffset = m_horizontal ? neededOffset : PagesContainer().HorizontalOffset();
+    double verticalOffset = m_horizontal ? PagesContainer().VerticalOffset() : neededOffset;
+    ChangeScrool(horizontalOffset, verticalOffset);
+    SignalPageChange(page + 1, m_pages.size());
+  }
+
+  winrt::fire_and_forget RCTPdfControl::LoadPDF(std::unique_lock<std::shared_mutex> lock, int fitPolicy, bool singlePage) {
+    auto lifetime = get_strong();
+    auto uri = Uri(winrt::to_hstring(m_pdfURI));
+    PdfDocument document = nullptr;
+    try {
+      auto file = co_await StorageFile::GetFileFromApplicationUriAsync(uri);
+      document = co_await PdfDocument::LoadFromFileAsync(file, winrt::to_hstring(m_pdfPassword));
+    }
+    catch (winrt::hresult_error const& ex) {
+      switch (ex.to_abi()) {
+      case __HRESULT_FROM_WIN32(ERROR_WRONG_PASSWORD):
+        SignalError("Document is password-protected and password is incorrect.");
+        co_return;
+      case E_FAIL:
+        SignalError("Document is not a valid PDF.");
+        co_return;
+      default:
+        SignalError(winrt::to_string(ex.message()));
+        co_return;
+      }
+    }
+    auto items = Pages().Items();
+    items.Clear();
+    m_pages.clear();
+    SetOrientation(m_horizontal);
+    if (document.PageCount() == 0) {
+      if (fitPolicy != -1)
+        m_scale = 1;
+    }
+    else {
+      auto firstPageSize = document.GetPage(0).Size();
+      auto viewWidth = PagesContainer().ViewportWidth();
+      auto viewHeight = PagesContainer().ViewportHeight();
+      switch (fitPolicy) {
+      case 0:
+        m_scale = viewWidth / (firstPageSize.Width + 2 * (double)m_margins);
+        break;
+      case 1:
+        m_scale = viewHeight / (firstPageSize.Height + 2 * (double)m_margins);
+        break;
+      case 2:
+        m_scale = (std::min)(viewWidth / (firstPageSize.Width + 2 * (double)m_margins), viewHeight / (firstPageSize.Height + 2 * (double)m_margins));
+        break;
+      default:
+        break;
+      }
+    }
+    unsigned pagesCount = document.PageCount();
+    if (singlePage && pagesCount > 0)
+      pagesCount = 1;
+    for (unsigned pageIdx = 0; pageIdx < pagesCount; ++pageIdx) {
+      auto page = document.GetPage(pageIdx);
+      auto dims = page.Size();
+      Image pageImage;
+      pageImage.HorizontalAlignment(HorizontalAlignment::Center);
+      m_pages.emplace_back(pageImage, page, m_scale, 0);
+    }
+    if (m_reverse) {
+      for (int page = m_pages.size() - 1; page >= 0; --page)
+        items.Append(m_pages[page].image);
+    }
+    else {
+      for (int page = 0; page < (int)m_pages.size(); ++page)
+        items.Append(m_pages[page].image);
+    }
+    UpdatePagesInfoMarginOrScale();
+    lock.unlock();
+    std::shared_lock shared_lock(m_rwlock);
+    if (m_currentPage < 0)
+      m_currentPage = 0;
+    if (m_currentPage < (int)m_pages.size()) {
+      co_await m_pages[m_currentPage].render();
+      GoToPage(m_currentPage);
+    }
+    if (m_pages.empty()) {
+      SignalLoadComplete(0, 0, 0);
+    }
+    else {
+      SignalLoadComplete(m_pages.size(), m_pages.front().width, m_pages.front().height);
+    }
+    // Render low-res preview of the pages
+    double useScale = (std::min)(m_scale, m_previewZoom);
+    for (unsigned page = 0; page < m_pages.size(); ++page) {
+      co_await m_pages[page].render(useScale);
+    }
+  }
+
+  void RCTPdfControl::Rescale(double newScale, double newMargin, bool goToNewPosition) {
+    if (newScale != m_scale || newMargin != m_margins) {
+      double rescale = newScale / m_scale;
+      double targetHorizontalOffset = PagesContainer().HorizontalOffset() * rescale;
+      double targetVerticalOffset = PagesContainer().VerticalOffset() * rescale;
+      if (newMargin != m_margins) {
+        if (m_horizontal) {
+          targetVerticalOffset += (double)m_currentPage * 2 * (newMargin - m_margins) * rescale;
+        }
+        else {
+          targetHorizontalOffset += (double)m_currentPage * 2 * (newMargin - m_margins) * rescale;
+        }
+      }
+      m_scale = newScale;
+      m_margins = (int)newMargin;
+      UpdatePagesInfoMarginOrScale();
+      if (goToNewPosition) {
+        ChangeScrool(targetHorizontalOffset, targetVerticalOffset);
+      }
+      SignalScaleChanged(m_scale);
+    }
+  }
+
+  void RCTPdfControl::SetOrientation(bool horizontal) {
+    m_horizontal = horizontal;
+    FindName(winrt::to_hstring("OrientationSelector")).try_as<StackPanel>().Orientation(m_horizontal ? Orientation::Horizontal : Orientation::Vertical);
+  }
+
+  winrt::IAsyncAction RCTPdfControl::RenderVisiblePages(int page) {
+    auto lifetime = get_strong();
+    auto container = PagesContainer();
+    auto currentHorizontalOffset = container.HorizontalOffset();
+    auto currentVerticalOffset = container.VerticalOffset();
+    double offsetStart = m_horizontal ? currentHorizontalOffset : currentVerticalOffset;
+    double viewSize = m_horizontal ? container.ViewportWidth() : container.ViewportHeight();
+    double offsetEnd = offsetStart + viewSize;
+    if (m_pages[page].needsRender()) {
+      co_await m_pages[page].render();
+    }
+    auto pageToRender = page + 1;
+    while (pageToRender < (int)m_pages.size() &&
+      m_pages[pageToRender].pageVisiblePixels(m_horizontal, offsetStart, offsetEnd) > 0) {
+      if (m_pages[pageToRender].needsRender()) {
+        co_await m_pages[pageToRender].render();
+      }
+      ++pageToRender;
+    }
+    if (pageToRender < (int)m_pages.size() && m_pages[pageToRender].needsRender()) {
+      co_await m_pages[pageToRender].render();
+    }
+    if (page >= 1 && m_pages[page - 1].needsRender()) {
+      co_await m_pages[page - 1].render();
+    }
+    if (page >= 2 && m_pages[page - 2].needsRender()) {
+      co_await m_pages[page - 2].render();
+    }
+  }
+
   void RCTPdfControl::SignalError(const std::string& error) {
     m_reactContext.DispatchEvent(
       *this,
@@ -285,300 +583,4 @@ namespace winrt::RCTPdf::implementation
         eventDataWriter.WriteObjectEnd();
       });
   }
-
-  winrt::Windows::Foundation::Collections::IVectorView<winrt::hstring> RCTPdfControl::Commands() noexcept {
-    auto commands = winrt::single_threaded_vector<hstring>();
-    commands.Append(L"setPage");
-    return commands.GetView();
-  }
-
-  void RCTPdfControl::DispatchCommand(winrt::hstring const& commandId, winrt::Microsoft::ReactNative::IJSValueReader const& commandArgsReader) noexcept {
-    auto commandArgs = JSValue::ReadArrayFrom(commandArgsReader);
-    if (commandId == L"setPage" && commandArgs.size() > 0) {
-      std::shared_lock lock(m_rwlock);
-      auto page = commandArgs[0].AsInt32() - 1;
-      GoToPage(page);
-    }
-  }
-
-  void RCTPdfControl::UpdatePagesInfoMarginOrScale() {
-    unsigned scaledMargin = (unsigned)(m_scale * m_margins);
-    for (auto& page : m_pages) {
-      page.imageScale = m_scale;
-      page.scaledWidth = (unsigned)(page.width * m_scale);
-      page.scaledHeight = (unsigned)(page.height * m_scale);
-      page.image.Margin(ThicknessHelper::FromUniformLength(scaledMargin));
-      page.image.Width(page.scaledWidth);
-      page.image.Height(page.scaledHeight);
-    }
-    unsigned totalTopOffset = 0;
-    unsigned totalLeftOffset = 0;
-    unsigned doubleScaledMargin = scaledMargin * 2;
-    if (m_reverse) {
-      for (int page = m_pages.size() - 1; page >= 0; --page) {
-        m_pages[page].scaledTopOffset = totalTopOffset;
-        totalTopOffset += m_pages[page].scaledHeight + doubleScaledMargin;
-        m_pages[page].scaledLeftOffset = totalLeftOffset;
-        totalLeftOffset += m_pages[page].scaledWidth + doubleScaledMargin;
-      }
-    } else {
-      for (int page = 0; page < (int)m_pages.size(); ++page) {
-        m_pages[page].scaledTopOffset = totalTopOffset;
-        totalTopOffset += m_pages[page].scaledHeight + doubleScaledMargin;
-        m_pages[page].scaledLeftOffset = totalLeftOffset;
-        totalLeftOffset += m_pages[page].scaledWidth + doubleScaledMargin;
-      }
-    }
-  }
-
-  winrt::fire_and_forget RCTPdfControl::LoadPDF(std::unique_lock<std::shared_mutex> lock, int fitPolicy, bool singlePage) {
-    auto lifetime = get_strong();
-    auto uri = Uri(winrt::to_hstring(m_pdfURI));
-    PdfDocument document = nullptr;
-    try {
-      auto file = co_await StorageFile::GetFileFromApplicationUriAsync(uri);
-      document = co_await PdfDocument::LoadFromFileAsync(file, winrt::to_hstring(m_pdfPassword));
-    } catch (winrt::hresult_error const& ex) {
-      switch (ex.to_abi()) {
-        case __HRESULT_FROM_WIN32(ERROR_WRONG_PASSWORD):
-          SignalError("Document is password-protected and password is incorrect.");
-          co_return;
-        case E_FAIL:
-          SignalError("Document is not a valid PDF.");
-          co_return;
-        default:
-          SignalError(winrt::to_string(ex.message()));
-          co_return;
-      }
-    }
-    auto items = Pages().Items();
-    items.Clear();
-    m_pages.clear();
-    SetOrientation(m_horizontal);
-    if (document.PageCount() == 0) {
-      if (fitPolicy != -1)
-        m_scale = 1;
-    } else {
-      auto firstPageSize = document.GetPage(0).Size();
-      auto viewWidth = PagesContainer().ViewportWidth();
-      auto viewHeight = PagesContainer().ViewportHeight();
-      switch (fitPolicy) {
-      case 0:
-        m_scale = viewWidth / (firstPageSize.Width + 2 * (double)m_margins);
-        break;
-      case 1:
-        m_scale = viewHeight / (firstPageSize.Height + 2 * (double)m_margins);
-        break;
-      case 2:
-        m_scale = (std::min)(viewWidth / (firstPageSize.Width + 2 * (double)m_margins), viewHeight / (firstPageSize.Height + 2 * (double)m_margins));
-        break;
-      default:
-        break;
-      }
-    }
-    unsigned pagesCount = document.PageCount();
-    if (singlePage && pagesCount > 0)
-      pagesCount = 1;
-    for (unsigned pageIdx = 0; pageIdx < pagesCount; ++pageIdx) {
-      auto page = document.GetPage(pageIdx);
-      auto dims = page.Size();
-      Image pageImage;
-      pageImage.HorizontalAlignment(HorizontalAlignment::Center);
-      m_pages.emplace_back(pageImage, page, m_scale, 0);
-    }
-    if (m_reverse) {
-      for (int page = m_pages.size() - 1; page >= 0; --page)
-        items.Append(m_pages[page].image);
-    } else {
-      for (int page = 0; page < (int) m_pages.size(); ++page)
-        items.Append(m_pages[page].image);
-    }
-    UpdatePagesInfoMarginOrScale();
-    lock.unlock();
-    std::shared_lock shared_lock(m_rwlock);
-    if (m_currentPage < 0)
-      m_currentPage = 0;
-    if (m_currentPage < (int)m_pages.size()) {
-      co_await m_pages[m_currentPage].render();
-      GoToPage(m_currentPage);
-    }
-    if (m_pages.empty()) {
-      SignalLoadComplete(0, 0, 0);
-    } else {
-      SignalLoadComplete(m_pages.size(), m_pages.front().width, m_pages.front().height);
-    }
-    // Render low-res preview of the pages
-    double useScale = (std::min)(m_scale, m_previewZoom);
-    for (unsigned page = 0; page < m_pages.size(); ++page) {
-      co_await m_pages[page].render(useScale);
-    }
-  }
-
-  winrt::fire_and_forget RCTPdfControl::OnViewChanged(winrt::Windows::Foundation::IInspectable const&,
-    winrt::Windows::UI::Xaml::Controls::ScrollViewerViewChangedEventArgs const& args) {
-    return {};
-  }
-
-  void RCTPdfControl::GoToPage(int page) {
-    if (page < 0 || page >= (int)m_pages.size()) {
-      return;
-    }
-    auto neededOffset = m_horizontal ? m_pages[page].scaledLeftOffset : m_pages[page].scaledTopOffset;
-    double horizontalOffset = m_horizontal ? neededOffset : PagesContainer().HorizontalOffset();
-    double verticalOffset = m_horizontal ? PagesContainer().VerticalOffset() : neededOffset;
-    ChangeScrool(horizontalOffset, verticalOffset);
-    SignalPageChange(page + 1, m_pages.size());
-  }
-
-  void RCTPdfControl::Rescale(double newScale, double newMargin, bool goToNewPosition) {
-    if (newScale != m_scale || newMargin != m_margins) {
-      double rescale = newScale / m_scale;
-      double targetHorizontalOffset = PagesContainer().HorizontalOffset() * rescale;
-      double targetVerticalOffset = PagesContainer().VerticalOffset() * rescale;
-      if (newMargin != m_margins) {
-        if (m_horizontal) {
-          targetVerticalOffset += (double)m_currentPage * 2 *(newMargin - m_margins) * rescale;
-        }
-        else {
-          targetHorizontalOffset += (double)m_currentPage * 2 * (newMargin - m_margins) * rescale;
-        }
-      }
-      m_scale = newScale;
-      m_margins = (int) newMargin;
-      UpdatePagesInfoMarginOrScale();
-      if (goToNewPosition) {
-        ChangeScrool(targetHorizontalOffset, targetVerticalOffset);
-      }
-      SignalScaleChanged(m_scale);
-    }
-  }
-  void RCTPdfControl::SetOrientation(bool horizontal) {
-    m_horizontal = horizontal;
-    FindName(winrt::to_hstring("OrientationSelector")).try_as<StackPanel>().Orientation(m_horizontal ? Orientation::Horizontal : Orientation::Vertical);
-  }
-
-  winrt::IAsyncAction RCTPdfControl::RenderVisiblePages(int page) {
-    auto lifetime = get_strong();
-    auto container = PagesContainer();
-    auto currentHorizontalOffset = container.HorizontalOffset();
-    auto currentVerticalOffset = container.VerticalOffset();
-    double offsetStart = m_horizontal ? currentHorizontalOffset : currentVerticalOffset;
-    double viewSize = m_horizontal ? container.ViewportWidth() : container.ViewportHeight();
-    double offsetEnd = offsetStart + viewSize;
-    if (m_pages[page].needsRender()) {
-      co_await m_pages[page].render();
-    }
-    auto pageToRender = page + 1;
-    while (pageToRender < (int)m_pages.size() &&
-      m_pages[pageToRender].pageVisiblePixels(m_horizontal, offsetStart, offsetEnd) > 0) {
-      if (m_pages[pageToRender].needsRender()) {
-        co_await m_pages[pageToRender].render();
-      }
-      ++pageToRender;
-    }
-    if (pageToRender < (int)m_pages.size() && m_pages[pageToRender].needsRender()) {
-      co_await m_pages[pageToRender].render();
-    }
-    if (page >= 1 && m_pages[page - 1].needsRender()) {
-      co_await m_pages[page - 1].render();
-    }
-    if (page >= 2 && m_pages[page - 2].needsRender()) {
-      co_await m_pages[page - 2].render();
-    }
-  }
-
-  void RCTPdfControl::PagesContainer_PointerWheelChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e) {
-    winrt::Windows::System::VirtualKeyModifiers modifiers = e.KeyModifiers();
-    if ((modifiers & winrt::Windows::System::VirtualKeyModifiers::Control) != winrt::Windows::System::VirtualKeyModifiers::Control)
-      return;
-    double delta = (e.GetCurrentPoint(*this).Properties().MouseWheelDelta() / WHEEL_DELTA);
-    std::shared_lock lock(m_rwlock);
-    auto newScale = (std::max)((std::min)(m_scale * pow(m_zoomMultiplier, delta), m_maxScale), m_minScale);
-    Rescale(newScale, m_margins, true);
-    e.Handled(true);
-  }
-
-  void RCTPdfControl::ChangeScrool(double targetHorizontalOffset, double targetVerticalOffset) {
-    auto container = PagesContainer();
-    auto maxHorizontalOffset = container.ScrollableWidth();
-    auto maxVerticalOffset = container.ScrollableHeight();
-    // If viewport is bigger than a page, it is possible that target offset is
-    // smaller than max offset. Take that into account:
-    if (targetHorizontalOffset <= maxHorizontalOffset + container.ViewportWidth() &&
-        targetVerticalOffset <= maxVerticalOffset + container.ViewportHeight()) {
-      PagesContainer().ChangeView((std::min)(targetHorizontalOffset, maxHorizontalOffset),
-                                  (std::min)(targetVerticalOffset, maxVerticalOffset),
-                                  nullptr, true);
-    } else {
-      m_targetHorizontalOffset = targetHorizontalOffset;
-      m_targetVerticalOffset = targetVerticalOffset;
-    }
-  }
-
-  void RCTPdfControl::Pages_SizeChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Windows::UI::Xaml::SizeChangedEventArgs const&) {
-    if (m_targetHorizontalOffset || m_targetVerticalOffset) {
-      auto container = PagesContainer();
-      PagesContainer().ChangeView(m_targetHorizontalOffset.value_or(container.HorizontalOffset()),
-                                  m_targetVerticalOffset.value_or(container.VerticalOffset()),
-                                  nullptr,
-                                  true);
-      m_targetHorizontalOffset.reset();
-      m_targetVerticalOffset.reset();
-    }
-  }
-}
-
-
-winrt::fire_and_forget winrt::RCTPdf::implementation::RCTPdfControl::PagesContainer_ViewChanged(winrt::Windows::Foundation::IInspectable const&, winrt::Windows::UI::Xaml::Controls::ScrollViewerViewChangedEventArgs const& args)
-{
-  auto lifetime = get_strong();
-  auto container = PagesContainer();
-  auto currentHorizontalOffset = container.HorizontalOffset();
-  auto currentVerticalOffset = container.VerticalOffset();
-  double offsetStart = m_horizontal ? currentHorizontalOffset : currentVerticalOffset;
-  double viewSize = m_horizontal ? container.ViewportWidth() : container.ViewportHeight();
-  double offsetEnd = offsetStart + viewSize;
-  std::shared_lock lock(m_rwlock, std::defer_lock);
-  if (args.IsIntermediate() || !lock.try_lock() || viewSize == 0 || m_pages.empty())
-    return;
-  // Go through pages untill we reach a visible page
-  int page = 0;
-  double visiblePagePixels = 0;
-  for (; page < (int)m_pages.size(); ++page) {
-    visiblePagePixels = m_pages[page].pageVisiblePixels(m_horizontal, offsetStart, offsetEnd);
-    if (visiblePagePixels > 0)
-      break;
-  }
-  if (page == (int)m_pages.size()) {
-    --page;
-  }
-  else {
-    double pagePixels = m_pages[page].pageSize(m_horizontal);
-    // #"page" is the first visible page. Check how much of the view port this page covers...
-    double viewCoveredByPage = visiblePagePixels / viewSize;
-    // ...and how much of the page is visible:
-    double pageVisiblePart = visiblePagePixels / pagePixels;
-    // If:
-    //  - less than 50% of the screen is covered by the page
-    //  - less than 50% of the page is visible (important if more than one page fits the screen)
-    //  - there is a next page
-    // move the indicator to that page:
-    if (viewCoveredByPage < 0.5 && pageVisiblePart < 0.5 && page + 1 < (int)m_pages.size()) {
-      ++page;
-    }
-  }
-  // Render all visible pages - first the curent one, then the next visible ones and one
-  // more, then the one before that might be partly visible, then one more before
-  co_await RenderVisiblePages(page);
-  if (page != m_currentPage) {
-    m_currentPage = page;
-    SignalPageChange(m_currentPage + 1, m_pages.size());
-  }
-}
-
-void winrt::RCTPdf::implementation::RCTPdfControl::PagesContainer_DoubleTapped(winrt::Windows::Foundation::IInspectable const& sender, winrt::Windows::UI::Xaml::Input::DoubleTappedRoutedEventArgs const& e)
-{
-  std::shared_lock lock(m_rwlock);
-  double newScale = (std::min)(m_scale * m_zoomMultiplier, m_maxScale);
-  Rescale(newScale, m_margins, true);
 }

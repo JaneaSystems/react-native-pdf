@@ -40,20 +40,14 @@ namespace winrt::RCTPdf::implementation
     public:
         RCTPdfControl(Microsoft::ReactNative::IReactContext const& reactContext);
 
-        static winrt::Windows::Foundation::Collections::
-          IMapView<winrt::hstring, winrt::Microsoft::ReactNative::ViewManagerPropertyType>
-          NativeProps() noexcept;
+        static winrt::Windows::Foundation::Collections::IMapView<winrt::hstring, winrt::Microsoft::ReactNative::ViewManagerPropertyType> NativeProps() noexcept;
         void UpdateProperties(winrt::Microsoft::ReactNative::IJSValueReader const& propertyMapReader) noexcept;
 
-        static winrt::Microsoft::ReactNative::ConstantProviderDelegate
-          ExportedCustomBubblingEventTypeConstants() noexcept;
-        static winrt::Microsoft::ReactNative::ConstantProviderDelegate
-          ExportedCustomDirectEventTypeConstants() noexcept;
+        static winrt::Microsoft::ReactNative::ConstantProviderDelegate ExportedCustomBubblingEventTypeConstants() noexcept;
+        static winrt::Microsoft::ReactNative::ConstantProviderDelegate ExportedCustomDirectEventTypeConstants() noexcept;
 
         static winrt::Windows::Foundation::Collections::IVectorView<winrt::hstring> Commands() noexcept;
-        void DispatchCommand(
-          winrt::hstring const& commandId,
-          winrt::Microsoft::ReactNative::IJSValueReader const& commandArgsReader) noexcept;
+        void DispatchCommand(winrt::hstring const& commandId, winrt::Microsoft::ReactNative::IJSValueReader const& commandArgsReader) noexcept;
 
         void PagesContainer_PointerWheelChanged(winrt::Windows::Foundation::IInspectable const& sender, winrt::Windows::UI::Xaml::Input::PointerRoutedEventArgs const& e);
         void Pages_SizeChanged(winrt::Windows::Foundation::IInspectable const& sender, winrt::Windows::UI::Xaml::SizeChangedEventArgs const& e);
@@ -94,10 +88,6 @@ namespace winrt::RCTPdf::implementation
         // Pages info
         std::vector<PDFPageInfo> m_pages;
 
-        winrt::fire_and_forget OnViewChanged(winrt::Windows::Foundation::IInspectable const& sender,
-          winrt::Windows::UI::Xaml::Controls::ScrollViewerViewChangedEventArgs const& args);
-        winrt::Windows::UI::Xaml::Controls::ScrollViewer::ViewChanged_revoker m_viewChangedRevoker{};
-
         void UpdatePagesInfoMarginOrScale();
         winrt::fire_and_forget LoadPDF(std::unique_lock<std::shared_mutex> lock, int fitPolicy, bool singlePage);
         void GoToPage(int page);
@@ -119,9 +109,7 @@ namespace winrt::RCTPdf::implementation
     };
 }
 
-namespace winrt::RCTPdf::factory_implementation
-{
-    struct RCTPdfControl : RCTPdfControlT<RCTPdfControl, implementation::RCTPdfControl>
-    {
+namespace winrt::RCTPdf::factory_implementation {
+    struct RCTPdfControl : RCTPdfControlT<RCTPdfControl, implementation::RCTPdfControl> {
     };
 }
