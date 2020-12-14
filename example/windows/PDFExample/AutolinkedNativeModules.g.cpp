@@ -6,6 +6,9 @@
 // Includes from react-native-pdf
 #include <winrt/RCTPdf.h>
 
+// Includes from rn-fetch-blob
+#include <winrt/RNFetchBlob.h>
+
 namespace winrt::Microsoft::ReactNative
 {
 
@@ -13,6 +16,8 @@ void RegisterAutolinkedNativeModulePackages(winrt::Windows::Foundation::Collecti
 { 
     // IReactPackageProviders from react-native-pdf
     packageProviders.Append(winrt::RCTPdf::ReactPackageProvider());
+    // IReactPackageProviders from rn-fetch-blob
+    packageProviders.Append(winrt::RNFetchBlob::ReactPackageProvider());
 }
 
 }

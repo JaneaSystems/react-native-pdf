@@ -20,17 +20,8 @@ import {
 
 import { ProgressBar } from '@react-native-community/progress-bar-android'
 import { ProgressView } from '@react-native-community/progress-view'
-
-let RNFetchBlob = {
-    fs : {
-        dirs: {
-            CacheDir: ''
-        }
-    }
-};
-if (Platform.OS !== 'windows') {
-    RNFetchBlob = require('rn-fetch-blob');
-}
+import RNFetchBlob from 'rn-fetch-blob';
+console.log(RNFetchBlob);
 
 const SHA1 = require('crypto-js/sha1');
 import PdfView from './PdfView';
@@ -264,7 +255,7 @@ export default class Pdf extends Component {
     };
 
     _downloadFile = async (source, cacheFile) => {
-
+        console.log(`Downloading ${source} to ${cacheFile}`)
         if (this.lastRNBFTask) {
             this.lastRNBFTask.cancel(err => {
             });
@@ -287,6 +278,7 @@ export default class Pdf extends Component {
             )
             // listen to download progress event
             .progress((received, total) => {
+                console.log(`download progress: ${received}/${total}`)
                 this.props.onLoadProgress && this.props.onLoadProgress(received / total);
                 if (this._mounted) {
                     this.setState({progress: received / total});
@@ -295,7 +287,7 @@ export default class Pdf extends Component {
 
         this.lastRNBFTask
             .then(async (res) => {
-
+                console.log('Download finished')
                 this.lastRNBFTask = null;
 
                 if (res && res.respInfo && res.respInfo.headers && !res.respInfo.headers["Content-Encoding"] && !res.respInfo.headers["Transfer-Encoding"] && res.respInfo.headers["Content-Length"]) {

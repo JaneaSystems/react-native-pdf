@@ -6,5 +6,9 @@
     <ProjectReference Include="$(ProjectDir)..\..\node_modules\react-native-pdf\windows\RCTPdf\RCTPdf.vcxproj">
       <Project>{03b8503f-f40d-4013-829c-71b304537d90}</Project>
     </ProjectReference>
+    <!-- Projects from rn-fetch-blob -->
+    <ProjectReference Include="$(ProjectDir)..\..\node_modules\rn-fetch-blob\windows\RNFetchBlob\RNFetchBlob.vcxproj">
+      <Project>{cdde3311-efd2-462d-8551-93637a7fae92}</Project>
+    </ProjectReference>
   </ItemGroup>
 </Project>

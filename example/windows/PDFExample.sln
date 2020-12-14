@@ -43,6 +43,8 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "RCTPdf", "..\node_modules\r
 EndProject
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "progress-view", "..\node_modules\@react-native-community\progress-view\windows\progress-view\progress-view.vcxproj", "{CA54A654-5E81-44DC-AF3F-CF55EF5B493A}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "RNFetchBlob", "..\node_modules\rn-fetch-blob\windows\RNFetchBlob\RNFetchBlob.vcxproj", "{CDDE3311-EFD2-462D-8551-93637A7FAE92}"
+EndProject
 Global
 	GlobalSection(SharedMSBuildProjectFiles) = preSolution
 		..\node_modules\react-native-windows\JSI\Shared\JSI.Shared.vcxitems*{0cc28589-39e4-4288-b162-97b959f8b843}*SharedItemsImports = 9
@@ -239,6 +241,22 @@ Global
 		{CA54A654-5E81-44DC-AF3F-CF55EF5B493A}.Release|x86.ActiveCfg = Release|Win32
 		{CA54A654-5E81-44DC-AF3F-CF55EF5B493A}.Release|x86.Build.0 = Release|Win32
 		{CA54A654-5E81-44DC-AF3F-CF55EF5B493A}.Release|x86.Deploy.0 = Release|Win32
+		{CDDE3311-EFD2-462D-8551-93637A7FAE92}.Debug|ARM.ActiveCfg = Debug|ARM
+		{CDDE3311-EFD2-462D-8551-93637A7FAE92}.Debug|ARM.Build.0 = Debug|ARM
+		{CDDE3311-EFD2-462D-8551-93637A7FAE92}.Debug|ARM64.ActiveCfg = Debug|ARM64
+		{CDDE3311-EFD2-462D-8551-93637A7FAE92}.Debug|ARM64.Build.0 = Debug|ARM64
+		{CDDE3311-EFD2-462D-8551-93637A7FAE92}.Debug|x64.ActiveCfg = Debug|x64
+		{CDDE3311-EFD2-462D-8551-93637A7FAE92}.Debug|x64.Build.0 = Debug|x64
+		{CDDE3311-EFD2-462D-8551-93637A7FAE92}.Debug|x86.ActiveCfg = Debug|Win32
+		{CDDE3311-EFD2-462D-8551-93637A7FAE92}.Debug|x86.Build.0 = Debug|Win32
+		{CDDE3311-EFD2-462D-8551-93637A7FAE92}.Release|ARM.ActiveCfg = Release|ARM
+		{CDDE3311-EFD2-462D-8551-93637A7FAE92}.Release|ARM.Build.0 = Release|ARM
+		{CDDE3311-EFD2-462D-8551-93637A7FAE92}.Release|ARM64.ActiveCfg = Release|ARM64
+		{CDDE3311-EFD2-462D-8551-93637A7FAE92}.Release|ARM64.Build.0 = Release|ARM64
+		{CDDE3311-EFD2-462D-8551-93637A7FAE92}.Release|x64.ActiveCfg = Release|x64
+		{CDDE3311-EFD2-462D-8551-93637A7FAE92}.Release|x64.Build.0 = Release|x64
+		{CDDE3311-EFD2-462D-8551-93637A7FAE92}.Release|x86.ActiveCfg = Release|Win32
+		{CDDE3311-EFD2-462D-8551-93637A7FAE92}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
