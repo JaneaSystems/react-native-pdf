@@ -13,7 +13,8 @@ import {
     Dimensions,
     SafeAreaView,
     View,
-    Text
+    Text,
+    Platform
 } from 'react-native';
 
 import Pdf from 'react-native-pdf';
@@ -82,7 +83,8 @@ export default class PDFExample extends React.Component {
     };
 
     render() {
-        let source = {uri:'http://samples.leanpub.com/thereactnativebook-sample.pdf',cache:true};
+        let source = Platform.OS === 'windows' ?  {uri: 'ms-appx:///test.pdf'} : {uri:'http://samples.leanpub.com/thereactnativebook-sample.pdf',cache:true};
+        //let source = {uri:'http://samples.leanpub.com/thereactnativebook-sample.pdf',cache:true};
         //let source = {uri: 'ms-appx:///test.pdf'}
         //let source = require('./test.pdf');  // ios only
         //let source = {uri:'bundle-assets://test.pdf'};
