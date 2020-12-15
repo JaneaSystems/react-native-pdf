@@ -20,21 +20,22 @@
     "url": "https://github.com/wonday/react-native-pdf/issues"
   },
   "dependencies": {
-    "react": "16.13.1",
-    "react-native": "0.63.2",
+    "fbjs": "^3.0.0",
+    "react": "17.0.1",
+    "react-native": "0.64.0-rc1",
     "react-native-orientation-locker": "^1.1.6",
     "react-native-pdf": "file:../",
-    "react-native-windows": "^0.63.11",
+    "react-native-windows": "^0.64.0-preview.3",
     "rn-fetch-blob": "joltup/rn-fetch-blob#pull/701/head"
   },
   "devDependencies": {
-    "@babel/core": "^7.5.5",
-    "@babel/runtime": "^7.5.5",
+    "@babel/core": "^7.8.4",
+    "@babel/runtime": "^7.8.4",
     "@react-native-community/eslint-config": "^0.0.5",
     "babel-jest": "^24.8.0",
     "eslint": "^6.0.1",
     "jest": "^24.8.0",
-    "metro-react-native-babel-preset": "^0.55.0",
+    "metro-react-native-babel-preset": "^0.56.0",
     "react-test-renderer": "16.8.6"
   },
   "jest": {
