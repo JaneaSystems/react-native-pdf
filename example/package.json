@@ -10,7 +10,7 @@
     "clean_react_native": "rm -rf $TMPDIR/react-* && rm -rf $TMPDIR/metro-* && rm -rf $TMPDIR/haste-* && watchman watch-del-all && lsof -n -i4TCP:8081 | sed '1 d' | awk '{print $2}' | xargs kill -9",
     "clean_node_modules": "rm -rf node_modules/ && yarn cache clean && yarn",
     "test": "jest",
-    "test:windows": "yarn jest --setupFiles=./jest-setups/jest.setup.windows.js",
+    "test:windows": "yarn jest --config=./jest.windows.config.js --runInBand",
     "lint": "eslint ."
   },
   "author": {
@@ -33,14 +33,14 @@
     "@babel/core": "^7.5.5",
     "@babel/runtime": "^7.5.5",
     "@react-native-community/eslint-config": "^0.0.5",
-    "appium": "^1.17.1",
+    "appium": "1.18.3",
     "babel-jest": "^24.8.0",
     "eslint": "^6.0.1",
     "jest": "^24.8.0",
     "metro-react-native-babel-preset": "^0.55.0",
-    "react-test-renderer": "16.8.6",
-    "selenium-appium": "^0.0.15",
-    "selenium-webdriver": "^4.0.0-alpha.7"
+    "react-test-renderer": "16.13.1",
+    "selenium-appium": "0.0.15",
+    "selenium-webdriver": "4.0.0-alpha.7"
   },
   "jest": {
     "preset": "react-native"

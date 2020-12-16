@@ -1,7 +1,7 @@
 import { driver, By2 } from 'selenium-appium'
 import { until } from 'selenium-webdriver';
 
-const setup = require('../jest-setups/jest.setup');
+const setup = require('../jest-windows/driver.setup');
 jest.setTimeout(50000);
 
 beforeAll(() => {
