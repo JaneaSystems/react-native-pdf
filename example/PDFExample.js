@@ -103,6 +103,7 @@ export default class PDFExample extends React.Component {
                     <View style={styles.btnText}><Text style={styles.btnText}>Page</Text></View>
                     <TouchableHighlight disabled={this.state.page === this.state.numberOfPages}
                                         style={this.state.page === this.state.numberOfPages ? styles.btnDisable : styles.btn}
+                                        testID='NextPage'
                                         onPress={() => this.nextPage()}>
                         <Text style={styles.btnText}>{'+'}</Text>
                     </TouchableHighlight>
